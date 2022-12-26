@@ -4,46 +4,40 @@ use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalanc
 use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
 use reqwest::{Client, Response, Version};
 use tonic::codegen::Body;
+use crate::client::factory::{get_bank_grpc_client, get_lcd_request_builder_by_chain_name};
 use crate::http::error::HTTPError;
 use crate::http::response;
 use crate::http::response::HealthResponse;
 
 #[get("/evmos")]
-pub async fn evmos_health(client: web::Data<Client>) -> Result<HttpResponse, HTTPError> {
-    let res = client
-        .get("https://rest.bd.evmos.org:1317/node_info")
-        .send()
-        .await
-        .map_err(|_| HTTPError::Timeout)?;
+pub async fn evmos_health() -> Result<HttpResponse, HTTPError> {
+    let builder = get_lcd_request_builder_by_chain_name("evmos").await;
+    let res = builder.send().await.map_err(|_| HTTPError::Timeout)?;
 
     response::build_health_response(Some(res), serde_json::Value::Null).await
 }
 
 #[get("/polygon")]
 pub async fn polygon_health(client: web::Data<Client>) -> Result<HttpResponse, HTTPError> {
+    let body = &serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "net_version",
+        "params": [],
+        "id": 1
+    });
     let res = client
         .post("https://polygon-mainnet-rpc.allthatnode.com:8545/")
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_blockNumber",
-            "params": [],
-            "id": 1
-        }))
+        .json(body)
         .send()
         .await
-        .map_err(|e| HTTPError::Timeout)?;
+        .map_err(|_| HTTPError::Timeout)?;
 
     response::build_health_response(Option::from(res), serde_json::Value::Null).await
 }
 
 #[get("/osmosis")]
 pub async fn osmosis_health() -> Result<HttpResponse, HTTPError> {
-    let mut client = QueryClient::connect("https://grpc.osmosis.zone:9090".clone())
-        .await
-        .map_err(|e| {
-            println!("Error: {:?}", e);
-            HTTPError::Timeout
-        })?;
+    let mut client = get_bank_grpc_client("osmosis").await;
 
     let request = tonic::Request::new(QueryBalanceRequest {
         address: "osmo18tduqdmp2hrk4avkyuu8eyl8uuq4vgjrc02rfq".to_string(),
