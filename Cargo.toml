@@ -21,6 +21,7 @@ prost = "0.11.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "full"] }
 protobuf = "3.2.0" # This will be needed to use the generated code as protobuf messages
 cosmos-sdk-proto = "0.16.0" # This will be needed to use the generated code as protobuf messages
+ibc-proto = { git = "https://github.com/cosmos/ibc-proto-rs", branch = "main" }
 
 [build-dependencies]
 tonic-build = "0.8.4"
