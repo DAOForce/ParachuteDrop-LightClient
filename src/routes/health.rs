@@ -1,38 +1,22 @@
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{get, HttpResponse, Responder, web};
 use actix_web::http::StatusCode;
-use cosmos_sdk_proto::cosmos::bank::v1beta1::query_client::QueryClient;
-use cosmos_sdk_proto::cosmos::bank::v1beta1::QueryAllBalancesRequest;
-use cosmos_sdk_proto::cosmos::base::query::v1beta1::PageRequest;
+use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
+use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
 use reqwest::{Client, Response, Version};
+use tonic::codegen::Body;
 use crate::http::error::HTTPError;
+use crate::http::response;
 use crate::http::response::HealthResponse;
 
 #[get("/evmos")]
-pub async fn evmos_health() -> Result<HttpResponse, HTTPError> {
-    // grpcurl -d '{"'address'": "'$EVMOS_ADDR_3'"}' $NODE cosmos.bank.v1beta1.Query/AllBalances
-    let endpoint = tonic::transport::Endpoint::new("https://grpc.evmos.nodestake.top"
-            .parse::<tonic::transport::Uri>().unwrap())
-            .unwrap();
-    let channel = endpoint.connect().await;
-    let mut connected_client = QueryClient::new(channel.unwrap());
-    let request = QueryAllBalancesRequest {
-        address: "evmos1f57x5pm9wpvlu4qldy864j0hdnq025287r65z2".to_string(),
-        pagination: Option::from(PageRequest {
-            key: Vec::from("".to_string()),
-            offset: 0,
-            limit: 0,
-            count_total: false,
-            reverse: false
-        }),
-    };
-    let response = connected_client.all_balances(request);
-    let response2 = response.await;
+pub async fn evmos_health(client: web::Data<Client>) -> Result<HttpResponse, HTTPError> {
+    let res = client
+        .get("https://rest.bd.evmos.org:1317/node_info")
+        .send()
+        .await
+        .map_err(|_| HTTPError::Timeout)?;
 
-    Ok(HttpResponse::Ok().json(HealthResponse {
-        status: StatusCode::OK.as_u16(),
-        message: "OK".to_string(),
-        data: None,
-    }))
+    response::build_health_response(Some(res), serde_json::Value::Null).await
 }
 
 #[get("/polygon")]
@@ -49,48 +33,42 @@ pub async fn polygon_health(client: web::Data<Client>) -> Result<HttpResponse, H
         .await
         .map_err(|e| HTTPError::Timeout)?;
 
-    build_health_response(res).await
-}
-
-async fn build_health_response(res: Response) -> Result<HttpResponse, HTTPError> {
-    if res.status().is_success() {
-        let body = res.text().await.map_err(|_| HTTPError::Timeout)?;
-        let data: serde_json::Value = serde_json::from_str(&body).map_err(|_| HTTPError::BadRequest)?;
-        let ok_response = HealthResponse {
-            status: 200,
-            message: "now working".to_string(),
-            data: Some(data),
-        };
-        Ok(HttpResponse::Ok().json(ok_response))
-    } else {
-        let err_response = HealthResponse {
-            status: res.status().as_u16(),
-            message: "service is not working well".to_string(),
-            data: None,
-        };
-
-        let response = HttpResponse::build(
-            StatusCode::from_u16(err_response.status).unwrap()
-        ).json(err_response);
-
-        Ok(response)
-    }
+    response::build_health_response(Option::from(res), serde_json::Value::Null).await
 }
 
 #[get("/osmosis")]
-pub async fn osmosis_health(client: web::Data<Client>) -> Result<HttpResponse, HTTPError> {
-    let res = client
-        .get("https://osmosis-mainnet-rpc.allthatnode.com:1317/node_info")
-        .send()
+pub async fn osmosis_health() -> Result<HttpResponse, HTTPError> {
+    let mut client = QueryClient::connect("https://grpc.osmosis.zone:9090".clone())
         .await
-        .map_err(|_| HTTPError::Timeout)?;
+        .map_err(|e| {
+            println!("Error: {:?}", e);
+            HTTPError::Timeout
+        })?;
 
-    build_health_response(res).await
+    let request = tonic::Request::new(QueryBalanceRequest {
+        address: "osmo18tduqdmp2hrk4avkyuu8eyl8uuq4vgjrc02rfq".to_string(),
+        denom: "uosmo".to_string(),
+    });
+
+    let response = client
+        .balance(request)
+        .await
+        .map(|r| r.into_inner())
+        .map_err(|e| HTTPError::Timeout)?;
+
+    // // Querying for a balance might fail, i.e. if the account doesn't actually exist
+    let balance = response
+        .balance
+        .ok_or_else(|| HTTPError::BadRequest)?;
+    // balance to Value
+    let balance_value = serde_json::to_value(balance).unwrap();
+
+    response::build_health_response(None, balance_value).await
 }
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{body::to_bytes, dev::Service, http, test, web, App, Error, middleware};
+    use actix_web::{App, body::to_bytes, dev::Service, Error, http, middleware, test, web};
     use actix_web::web::Data;
     use crate::http::response::HealthResponse;
 
@@ -132,7 +110,7 @@ mod tests {
         let req = test::TestRequest::get().uri("/health/osmosis").to_request();
         let resp = app.call(req).await?;
 
-        assert_eq!(resp.status(), http::StatusCode::OK);
+        assert_eq!(resp.status(), StatusCode::OK);
 
         let response_body = resp.into_body();
         let data: HealthResponse = serde_json::from_slice(&to_bytes(response_body).await?).unwrap();
@@ -143,4 +121,26 @@ mod tests {
         Ok(())
     }
 
+    #[actix_web::test]
+    async fn test_evmos_health() -> Result<(), Error> {
+        let evmos_controller = web::scope("/health")
+            .app_data(Data::new(Client::new()))
+            .service(evmos_health);
+        let app = App::new()
+            .wrap(middleware::Logger::default())
+            .service(evmos_controller);
+        let app = test::init_service(app).await;
+        let req = test::TestRequest::get().uri("/health/evmos").to_request();
+        let resp = app.call(req).await?;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let response_body = resp.into_body();
+        let data: HealthResponse = serde_json::from_slice(&to_bytes(response_body).await?).unwrap();
+        assert_eq!(data.status, 200);
+        assert_eq!(data.message, "now working");
+        assert!(data.data.is_some());
+
+        Ok(())
+    }
 }
