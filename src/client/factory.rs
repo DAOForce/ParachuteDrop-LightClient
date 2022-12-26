@@ -10,8 +10,10 @@ use std::process::Output;
 use actix_web::web;
 use ibc_proto::ibc::core::channel::v1::Channel;
 use reqwest::{Client, RequestBuilder, Response};
+use serde_json::Value;
 use tokio::task::JoinSet;
 use crate::http::error::HTTPError;
+use crate::http::method::HTTPRequestMethod;
 
 #[derive(Serialize,Deserialize, Debug, Clone, PartialEq)]
 pub struct SupportedBlockchain {
@@ -29,19 +31,22 @@ impl SupportedBlockchain {
         }
     }
 
-    pub async fn get_lcd_post_request_builder_with_json(
-        &self, client: web::Data<Client>, body: serde_json::Value
-    ) -> RequestBuilder {
+    pub async fn get_lcd_request_builder_by_chain_name(&self, request_type: HTTPRequestMethod, client: web::Data<Client>) -> RequestBuilder {
         match &self.rest_url {
             None => panic!("Error: {:?} is not a supported lcd cosmos blockchain!", self.name),
-            Some(rest_url) => client.post(rest_url.to_owned()).json(&body),
-        }
-    }
-
-    pub async fn get_lcd_get_request_builder(&self, client: web::Data<Client>) -> RequestBuilder {
-        match &self.rest_url {
-            None => panic!("Error: {:?} is not a supported lcd cosmos blockchain!", self.name),
-            Some(rest_url) => client.get(rest_url.to_owned()),
+            Some(rest_url) => {
+                if request_type == HTTPRequestMethod::GET {
+                    client.get(rest_url.to_owned())
+                } else if request_type == HTTPRequestMethod::POST {
+                    client.post(rest_url.to_owned())
+                } else if request_type == HTTPRequestMethod::PUT {
+                    client.put(rest_url.to_owned())
+                } else if request_type == HTTPRequestMethod::DELETE {
+                    client.delete(rest_url.to_owned())
+                } else {
+                    panic!("Error is not a supported http request type!")
+                }
+            }
         }
     }
 }
@@ -84,8 +89,20 @@ pub async fn get_bank_grpc_client(name: &str) -> QueryClient<tonic::transport::C
     blockchain.get_bank_grpc_client().await
 }
 
-pub async fn get_lcd_request_builder_by_chain_name(chain_name: &str) -> RequestBuilder {
+pub async fn build_request_by_chain_name(chain_name: &str, method: HTTPRequestMethod) -> RequestBuilder {
     let supported_blockchains = get_supported_blockchains();
     let blockchain = supported_blockchains.get(chain_name).unwrap();
-    blockchain.get_lcd_get_request_builder(web::Data::new(Client::new())).await
+    blockchain.get_lcd_request_builder_by_chain_name(
+        method,
+        web::Data::new(Client::new())
+    ).await
+}
+
+pub async fn build_request_with_body_and_chain_name(chain_name: &str, method: HTTPRequestMethod, body: &Value) -> RequestBuilder {
+    let supported_blockchains = get_supported_blockchains();
+    let blockchain = supported_blockchains.get(chain_name).unwrap();
+    blockchain.get_lcd_request_builder_by_chain_name(
+        method,
+        web::Data::new(Client::new())
+    ).await.json(body)
 }

@@ -3,6 +3,7 @@ use actix_web::web::Data;
 
 mod routes;
 mod http;
+mod client;
 
 use crate::routes::health::{evmos_health, osmosis_health, polygon_health};
 
