@@ -1,8 +1,39 @@
 use actix_web::{get, web, HttpResponse, Responder};
 use actix_web::http::StatusCode;
-use reqwest::{Client, Response};
+use cosmos_sdk_proto::cosmos::bank::v1beta1::query_client::QueryClient;
+use cosmos_sdk_proto::cosmos::bank::v1beta1::QueryAllBalancesRequest;
+use cosmos_sdk_proto::cosmos::base::query::v1beta1::PageRequest;
+use reqwest::{Client, Response, Version};
 use crate::http::error::HTTPError;
 use crate::http::response::HealthResponse;
+
+#[get("/evmos")]
+pub async fn evmos_health() -> Result<HttpResponse, HTTPError> {
+    // grpcurl -d '{"'address'": "'$EVMOS_ADDR_3'"}' $NODE cosmos.bank.v1beta1.Query/AllBalances
+    let endpoint = tonic::transport::Endpoint::new("https://grpc.evmos.nodestake.top"
+            .parse::<tonic::transport::Uri>().unwrap())
+            .unwrap();
+    let channel = endpoint.connect().await;
+    let mut connected_client = QueryClient::new(channel.unwrap());
+    let request = QueryAllBalancesRequest {
+        address: "evmos1f57x5pm9wpvlu4qldy864j0hdnq025287r65z2".to_string(),
+        pagination: Option::from(PageRequest {
+            key: Vec::from("".to_string()),
+            offset: 0,
+            limit: 0,
+            count_total: false,
+            reverse: false
+        }),
+    };
+    let response = connected_client.all_balances(request);
+    let response2 = response.await;
+
+    Ok(HttpResponse::Ok().json(HealthResponse {
+        status: StatusCode::OK.as_u16(),
+        message: "OK".to_string(),
+        data: None,
+    }))
+}
 
 #[get("/polygon")]
 pub async fn polygon_health(client: web::Data<Client>) -> Result<HttpResponse, HTTPError> {

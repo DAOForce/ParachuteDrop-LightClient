@@ -4,7 +4,7 @@ use actix_web::web::Data;
 mod routes;
 mod http;
 
-use crate::routes::health::{osmosis_health, polygon_health};
+use crate::routes::health::{evmos_health, osmosis_health, polygon_health};
 
 async fn index(req: HttpRequest) -> &'static str {
     println!("REQ: {req:?}");
@@ -20,7 +20,8 @@ async fn main() -> std::io::Result<()> {
         let health_controller = web::scope("/health")
             .app_data(Data::new(reqwest::Client::new()))
             .service(osmosis_health)
-            .service(polygon_health);
+            .service(polygon_health)
+            .service(evmos_health);
         App::new()
             .wrap(middleware::Logger::default())
             .service(health_controller)
