@@ -6,6 +6,7 @@ mod http;
 mod client;
 
 use crate::routes::health::{evmos_health, osmosis_health, polygon_health};
+use crate::routes::query::query_balance;
 
 async fn index(req: HttpRequest) -> &'static str {
     println!("REQ: {req:?}");
@@ -23,9 +24,13 @@ async fn main() -> std::io::Result<()> {
             .service(osmosis_health)
             .service(polygon_health)
             .service(evmos_health);
+        let query_controller = web::scope("/query")
+            .app_data(Data::new(reqwest::Client::new()))
+            .service(query_balance);
         App::new()
             .wrap(middleware::Logger::default())
             .service(health_controller)
+            .service(query_controller)
             .service(web::resource("/index.html").to(|| async { "Hello world!" }))
             .service(web::resource("/").to(index))
     })
