@@ -21,24 +21,32 @@ pub struct QueryChainTokenBalance {
 // check the balance of evmos in given account address
 #[get("/balance")]
 pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<HttpResponse, HTTPError> {
-    // this function checks the balance of the token_denom that address holds in the target_chain
-    // using the grpc client or http client
+    // TODO: search appropriate lcd or grpc request by searching chain name
     let mut client = get_bank_grpc_client(&info.target_chain).await;
     let target_chain = info.target_chain.clone();
     let token_denom = info.token_denom.clone();
     let address = info.address.clone();
 
-    println!("target_chain: {}", target_chain);
-    println!("token_denom: {}", token_denom);
-    println!("address: {}", address);
+    let denom = match token_denom.as_str() {
+        "evmos" => "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string(),
+        _ => return Err(HTTPError::BadRequest),
+    };
 
-    let request = build_request_with_body_and_chain_name(&target_chain, HTTPRequestMethod::POST, &serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "net_version",
-        "params": [],
-        "id": 1
-    })).await.send().await.map_err(|_| HTTPError::Timeout)?;
+    let request = tonic::Request::new(QueryBalanceRequest {
+        address: address.clone(),
+        denom: denom.clone(),
+    });
 
-    // return the response
-    response::build_health_response(Option::from(request), serde_json::Value::Null).await
+    println!("target_chain: {}", &target_chain);
+    println!("token_denom: {}", &token_denom);
+    println!("address: {}", &address);
+
+    let response = client
+        .balance(request)
+        .await
+        .map(|r| r.into_inner())
+        .map_err(|e| HTTPError::Timeout)?;
+
+    // return with the response
+    Ok(HttpResponse::Ok().json(response))
 }
