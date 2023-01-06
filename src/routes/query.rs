@@ -10,6 +10,8 @@ use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
 use serde::{Deserialize, Serialize};
+use serde_json::from_str;
+use crate::routes::sonar::SonarOsmosisResponse;
 
 #[derive(Deserialize)]
 pub struct QueryChainTokenBalance {
@@ -23,6 +25,28 @@ pub struct ChainTokenBalanceResponse {
     address: String,
     token_name: String,
     amount: f64,
+}
+
+#[get("/message")]
+pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<HttpResponse, HTTPError> {
+    let target_chain = info.target_chain.clone();
+    let token_denom = info.token_denom.clone();
+    let address = info.address.clone();
+
+    // let denom = match token_denom.as_str() {
+    //     "evmos" => "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string(),
+    //     _ => return Err(HTTPError::BadRequest),
+    // };
+
+    // send request to https://api.sonarpod.com/osmosis/account/address/transactions?per_page=20&page=1
+    let http_client = reqwest::Client::new();
+    let sonar_api = format!("https://api.sonarpod.com/osmosis/account/{}/transactions?per_page=20&page=1", address);
+    let sonar_response = http_client.get(sonar_api).send().await.map_err(|_| HTTPError::Timeout)?;
+    let sonar_response_body = sonar_response.text().await.map_err(|_| HTTPError::Timeout)?;
+
+    let response: SonarOsmosisResponse = from_str(&sonar_response_body).map_err(|_| HTTPError::InternalError)?;
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 // check the balance of evmos in given account address
