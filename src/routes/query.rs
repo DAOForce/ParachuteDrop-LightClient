@@ -9,13 +9,20 @@ use crate::http::error::HTTPError;
 use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct QueryChainTokenBalance {
     target_chain: String,
     token_denom: String,
     address: String,
+}
+
+#[derive(Serialize)]
+pub struct ChainTokenBalanceResponse {
+    address: String,
+    token_name: String,
+    amount: f64,
 }
 
 // check the balance of evmos in given account address
@@ -47,6 +54,60 @@ pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<H
         .map(|r| r.into_inner())
         .map_err(|e| HTTPError::Timeout)?;
 
+    // convert response to ChainTokenBalanceResponse
+    let balance = response
+        .balance
+        .ok_or_else(|| HTTPError::BadRequest)?;
+    let amount = balance.amount.parse::<f64>().unwrap() / f64::powf(10.0, 18.0);
+
+    let chain_token_balance_response = ChainTokenBalanceResponse {
+        address: address.clone(),
+        token_name: token_denom,
+        amount,
+    };
+
     // return with the response
-    Ok(HttpResponse::Ok().json(response))
+    Ok(HttpResponse::Ok().json(chain_token_balance_response))
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::{App, body::to_bytes, dev::Service, Error, http, middleware, test, web};
+    use actix_web::web::Data;
+    use crate::http::response::HealthResponse;
+
+    use super::*;
+
+    #[actix_web::test]
+    async fn test_query_balance() -> Result<(), Error> {
+        // given: http://localhost:8080/query/balance?target_chain=osmosis&token_denom=evmos&address=osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n
+        let query_controller = web::scope("/query")
+            .service(query_balance);
+        let mut app = test::init_service(
+            App::new()
+                .service(query_controller)
+                .wrap(middleware::Logger::default()),
+        ).await;
+
+        // when: make sure that the endpoint calls query_balance
+        let req = test::TestRequest::get()
+           .uri("/query/balance?target_chain=osmosis&token_denom=evmos&address=osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n")
+              .to_request();
+        let resp = app.call(req).await.unwrap();
+
+        // then: the response is the following
+        // {
+        //     "address": "osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n",
+        //     "token_name": "evmos",
+        //     "amount": 6.856597348646046
+        // }
+        assert_eq!(resp.status(), http::StatusCode::OK);
+
+        let body = to_bytes(resp.into_body()).await.unwrap();
+        let body_str = std::str::from_utf8(&body).unwrap();
+        println!("{}", body_str);
+
+        assert_eq!(body_str, r#"{"address":"osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n","token_name":"evmos","amount":6.856597348646046}"#);
+        Ok(())
+    }
 }
