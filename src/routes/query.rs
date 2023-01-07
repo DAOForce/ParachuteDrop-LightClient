@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use actix_web::{get, HttpResponse, Responder, web};
 use actix_web::http::StatusCode;
 use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
-use ibc_proto::cosmos::tx::v1beta1::{GetTxRequest, GetTxResponse, Tx};
+use ibc_proto::cosmos::tx::v1beta1::{GetTxRequest, GetTxResponse, Tx, TxBody};
 use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
 use reqwest::{Client, Response, Version};
 use tonic::codegen::Body;
@@ -13,7 +13,7 @@ use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
 use serde::{Deserialize, Serialize};
-use serde_json::from_str;
+use serde_json::{from_str, Value};
 use strum::IntoEnumIterator;
 use crate::routes::message::{DumpMessageType, HodlMessageType, IndetermineMessageType, MessageType};
 use crate::routes::sonar;
@@ -50,15 +50,36 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
     let mut dump_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
     let mut hodl_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
     let mut indetermine_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
+    // sonar_response Txs :: order by time desc
     for tx in &sonar_response.Txs {
         // iterate each Message struct in the tx struct
         // if given message type name includes the enum message type of `DumpMessageType` and `HodlMessageType`, then create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
         // iterate tx.Messages iter()
         // let txHash = tx.TxHash.to_string();
-
         for im in IndetermineMessageType::iter() {
             if doesContainMessageType(&tx, &im) {
                 indetermine_messages.entry(im.to_string()).or_insert(vec![]).push(tx);
+                let raw_tx_response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
+                if raw_tx_response.tx_response.is_none() {
+                    break;
+                }
+                if !isSucceedTransaction(&raw_tx_response) {
+                    continue;
+                }
+                let tx = raw_tx_response.tx.unwrap();
+                let tx_body = tx.body.unwrap();
+                if !isMsgSwapExactAmountIn(&tx_body) {
+                    continue;
+                }
+                let msg = &tx_body.messages[0].value;
+                // msg to utf8 with lossy
+                // token in denom: 52F0A20F1C1801A248333B13DFC7C54CF4E0BF8E6E6180D6204E6A9495B64057
+                // token out denom: 163ED10C9238616CFEDF905EDCB848203405876CDB221045A4BC0FD4BE9907F4
+                let msg_str = String::from_utf8_lossy(&msg);
+                if msg_str.contains("ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A") {
+                    println!("dump message: {}", msg_str);
+                }
+                println!("msg_str: {}", msg_str);
             }
         }
 
@@ -78,16 +99,48 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
     Ok(HttpResponse::Ok().json(sonar_response))
 }
 
+fn isMsgSwapExactAmountIn(tx_body: &TxBody) -> bool {
+    let tx_messages = tx_body.messages.get(0);
+    let tx_message = tx_messages.unwrap();
+    let typeUrl = tx_message.type_url.clone();
+    return if !typeUrl.contains("SwapExactAmountIn") {
+        false
+    } else {
+        true
+    }
+}
+
+fn isSucceedTransaction(raw_tx_response: &GetTxResponse) -> bool {
+    let tx_response = raw_tx_response.clone().tx_response.unwrap();
+    if tx_response.code != 0 {
+        return false
+    }
+    return true
+}
+
+// getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
 // 4EC9A84419A45FE9379B4406B822B8563C16D1EBA53B3C0639A68A5E550797A9
-async fn getTxRawByHash(tx_hash: String) -> GetTxResponse {
+async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> GetTxResponse {
     // grpcurl -plaintext -d '{"hash": "4EC9A84419A45FE9379B4406B822B8563C16D1EBA53B3C0639A68A5E550797A9"}' grpc.osmosis.zone:9090 cosmos.tx.v1beta1.Service/GetTx
-    let mut client = get_tx_grpc_client("osmosis").await;
+    let mut client = get_tx_grpc_client(target_chain).await;
     let request = tonic::Request::new(GetTxRequest {
-        hash: tx_hash,
+        hash: tx_hash.to_string(),
     });
 
-    let response = client.get_tx(request).await.map_err(|_| HTTPError::InternalError);
-    return response.map_err(|_| HTTPError::InternalError).unwrap().into_inner();
+    let response = client.get_tx(request).await;
+    return match response {
+        Ok(response) => {
+            let tx_response = response.into_inner();
+            tx_response
+        },
+        Err(e) => {
+            println!("Error getting transaction: {}", e);
+            GetTxResponse {
+                tx_response: None,
+                tx: None
+            }
+        }
+    }
 }
 
 fn doesContainMessageType(tx: &sonar::Tx, msg: &dyn MessageType) -> bool {
