@@ -31,6 +31,13 @@ impl SupportedBlockchain {
         }
     }
 
+    pub async fn get_tx_grpc_client(&self) -> ibc_proto::cosmos::tx::v1beta1::service_client::ServiceClient<tonic::transport::Channel> {
+        match &self.grpc_url {
+            None => panic!("Error: {:?} is not a supported grpc cosmos blockchain!", self.name),
+            Some(grpc_url) => ibc_proto::cosmos::tx::v1beta1::service_client::ServiceClient::connect(grpc_url.to_owned()).await.unwrap(),
+        }
+    }
+
     pub async fn get_lcd_request_builder_by_chain_name(&self, request_type: HTTPRequestMethod, client: web::Data<Client>) -> RequestBuilder {
         match &self.rest_url {
             None => panic!("Error: {:?} is not a supported lcd cosmos blockchain!", self.name),
@@ -87,6 +94,12 @@ pub async fn get_bank_grpc_client(name: &str) -> QueryClient<tonic::transport::C
     let supported_blockchains = get_supported_blockchains();
     let blockchain = supported_blockchains.get(name).unwrap();
     blockchain.get_bank_grpc_client().await
+}
+
+pub async fn get_tx_grpc_client(name: &str) -> ibc_proto::cosmos::tx::v1beta1::service_client::ServiceClient<tonic::transport::Channel> {
+    let supported_blockchains = get_supported_blockchains();
+    let blockchain = supported_blockchains.get(name).unwrap();
+    blockchain.get_tx_grpc_client().await
 }
 
 pub async fn build_request_by_chain_name(chain_name: &str, method: HTTPRequestMethod) -> RequestBuilder {

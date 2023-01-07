@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use actix_web::{get, HttpResponse, Responder, web};
 use actix_web::http::StatusCode;
 use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
-use ibc_proto::cosmos::tx::v1beta1::Tx;
+use ibc_proto::cosmos::tx::v1beta1::{GetTxRequest, GetTxResponse, Tx};
 use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
 use reqwest::{Client, Response, Version};
 use tonic::codegen::Body;
-use crate::client::factory::{build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client};
+use crate::client::factory::{build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client, get_tx_grpc_client};
 use crate::http::error::HTTPError;
 use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
@@ -15,7 +15,7 @@ use crate::http::response::HealthResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use strum::IntoEnumIterator;
-use crate::routes::message::{DumpMessageType, HodlMessageType, MessageType};
+use crate::routes::message::{DumpMessageType, HodlMessageType, IndetermineMessageType, MessageType};
 use crate::routes::sonar;
 use crate::routes::sonar::SonarOsmosisResponse;
 
@@ -49,10 +49,18 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
     // then filter & create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
     let mut dump_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
     let mut hodl_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
+    let mut indetermine_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
     for tx in &sonar_response.Txs {
         // iterate each Message struct in the tx struct
         // if given message type name includes the enum message type of `DumpMessageType` and `HodlMessageType`, then create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
         // iterate tx.Messages iter()
+        // let txHash = tx.TxHash.to_string();
+
+        for im in IndetermineMessageType::iter() {
+            if doesContainMessageType(&tx, &im) {
+                indetermine_messages.entry(im.to_string()).or_insert(vec![]).push(tx);
+            }
+        }
 
         for hm in HodlMessageType::iter() {
             if doesContainMessageType(tx, &hm) {
@@ -68,6 +76,18 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
     }
 
     Ok(HttpResponse::Ok().json(sonar_response))
+}
+
+// 4EC9A84419A45FE9379B4406B822B8563C16D1EBA53B3C0639A68A5E550797A9
+async fn getTxRawByHash(tx_hash: String) -> GetTxResponse {
+    // grpcurl -plaintext -d '{"hash": "4EC9A84419A45FE9379B4406B822B8563C16D1EBA53B3C0639A68A5E550797A9"}' grpc.osmosis.zone:9090 cosmos.tx.v1beta1.Service/GetTx
+    let mut client = get_tx_grpc_client("osmosis").await;
+    let request = tonic::Request::new(GetTxRequest {
+        hash: tx_hash,
+    });
+
+    let response = client.get_tx(request).await.map_err(|_| HTTPError::InternalError);
+    return response.map_err(|_| HTTPError::InternalError).unwrap().into_inner();
 }
 
 fn doesContainMessageType(tx: &sonar::Tx, msg: &dyn MessageType) -> bool {

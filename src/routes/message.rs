@@ -1,4 +1,5 @@
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString, IntoStaticStr};
 
@@ -58,6 +59,26 @@ pub enum HodlMessageType {
     LockTokens,
     LockAndSuperfluidDelegate,
     SuperfluidDelegate,
+}
+
+#[derive(Debug, EnumIter)]
+pub enum IndetermineMessageType {
+    SwapExactAmountIn,
+}
+
+// TODO: impl Display to apply for MessageType
+impl Display for IndetermineMessageType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl MessageType for IndetermineMessageType {
+    fn get_type(&self) -> String {
+        match *self {
+            IndetermineMessageType::SwapExactAmountIn => "swap_exact_amount_in".to_string(),
+        }
+    }
 }
 
 impl fmt::Display for HodlMessageType {
