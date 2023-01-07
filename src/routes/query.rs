@@ -1,6 +1,9 @@
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use actix_web::{get, HttpResponse, Responder, web};
 use actix_web::http::StatusCode;
 use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
+use ibc_proto::cosmos::tx::v1beta1::Tx;
 use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
 use reqwest::{Client, Response, Version};
 use tonic::codegen::Body;
@@ -11,6 +14,9 @@ use crate::http::response;
 use crate::http::response::HealthResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
+use strum::IntoEnumIterator;
+use crate::routes::message::{DumpMessageType, HodlMessageType, MessageType};
+use crate::routes::sonar;
 use crate::routes::sonar::SonarOsmosisResponse;
 
 #[derive(Deserialize)]
@@ -33,20 +39,39 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
     let token_denom = info.token_denom.clone();
     let address = info.address.clone();
 
-    // let denom = match token_denom.as_str() {
-    //     "evmos" => "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string(),
-    //     _ => return Err(HTTPError::BadRequest),
-    // };
-
-    // send request to https://api.sonarpod.com/osmosis/account/address/transactions?per_page=20&page=1
     let http_client = reqwest::Client::new();
     let sonar_api = format!("https://api.sonarpod.com/osmosis/account/{}/transactions?per_page=20&page=1", address);
-    let sonar_response = http_client.get(sonar_api).send().await.map_err(|_| HTTPError::Timeout)?;
-    let sonar_response_body = sonar_response.text().await.map_err(|_| HTTPError::Timeout)?;
+    let sonar_request = http_client.get(sonar_api).send().await.map_err(|_| HTTPError::Timeout)?;
+    let sonar_response_body = sonar_request.text().await.map_err(|_| HTTPError::Timeout)?;
+    let sonar_response: SonarOsmosisResponse = from_str(&sonar_response_body).map_err(|_| HTTPError::InternalError)?;
 
-    let response: SonarOsmosisResponse = from_str(&sonar_response_body).map_err(|_| HTTPError::InternalError)?;
+    // iterate each Tx struct in the sonar_response.
+    // then filter & create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
+    let mut dump_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
+    let mut hodl_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
+    for tx in &sonar_response.Txs {
+        // iterate each Message struct in the tx struct
+        // if given message type name includes the enum message type of `DumpMessageType` and `HodlMessageType`, then create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
+        // iterate tx.Messages iter()
 
-    Ok(HttpResponse::Ok().json(response))
+        for hm in HodlMessageType::iter() {
+            if doesContainMessageType(tx, &hm) {
+                hodl_messages.entry(hm.to_string()).or_insert(vec![]).push(tx);
+            }
+        }
+
+        for dm in DumpMessageType::iter() {
+            if doesContainMessageType(tx, &dm) {
+                dump_messages.entry(dm.to_string()).or_insert(vec![]).push(tx);
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(sonar_response))
+}
+
+fn doesContainMessageType(tx: &sonar::Tx, msg: &dyn MessageType) -> bool {
+    tx.Messages.iter().any(|m| m.Type == msg.to_string())
 }
 
 // check the balance of evmos in given account address

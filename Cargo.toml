@@ -24,6 +24,8 @@ cosmos-sdk-proto = "0.16.0" # This will be needed to use the generated code as p
 ibc-proto = { git = "https://github.com/cosmos/ibc-proto-rs", branch = "main" }
 web3 = "0.18.0"
 jsonrpc-core-client = "18.0.0"
+strum = "0.24.1"
+strum_macros = "0.24.3"
 
 [build-dependencies]
 tonic-build = "0.8.4"

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Tx {
-    TxHash: String,
+pub struct Tx {
+    pub(crate) TxHash: String,
     Success: bool,
     Height: String,
     Timestamp: String,
@@ -12,7 +12,7 @@ struct Tx {
     WantedGas: String,
     Fee: Vec<Fee>,
     Memo: String,
-    Messages: Vec<Message>,
+    pub(crate) Messages: Vec<Message>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -22,9 +22,9 @@ struct Fee {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Message {
+pub struct Message {
     Module: String,
-    Type: String,
+    pub(crate) Type: String,
     TxHash: String,
     Json: String,
     Success: bool,
@@ -32,12 +32,7 @@ struct Message {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SonarOsmosisResponse {
-    TotalTxs: u64,
-    TotalSuccessTxs: u64,
-    TotalFailureTxs: u64,
     Page: u64,
     PerPage: u64,
-    SuccessOnly: bool,
-    FailureOnly: bool,
-    Txs: Vec<Tx>,
+    pub(crate) Txs: Vec<Tx>,
 }
