@@ -47,7 +47,9 @@ impl MessageType for HodlMessageType {
         match *self {
             HodlMessageType::JoinPool => "join_pool".to_string(),
             HodlMessageType::LockTokens => "lock_tokens".to_string(),
-            HodlMessageType::LockAndSuperfluidDelegate => "lock_and_superfluid_delegate".to_string(),
+            HodlMessageType::LockAndSuperfluidDelegate => {
+                "lock_and_superfluid_delegate".to_string()
+            }
             HodlMessageType::SuperfluidDelegate => "superfluid_delegate".to_string(),
         }
     }

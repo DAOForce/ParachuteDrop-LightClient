@@ -1,21 +1,22 @@
-use actix_web::{get, HttpResponse, Responder, web};
-use actix_web::http::StatusCode;
-use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
-use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
-use reqwest::{Client, Response, Version};
-use tonic::codegen::Body;
-use crate::client::factory::{build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client};
+use crate::client::factory::{
+    build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client,
+};
 use crate::http::error::HTTPError;
 use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
+use actix_web::http::StatusCode;
+use actix_web::{get, web, HttpResponse, Responder};
+use ibc_proto::cosmos::bank::v1beta1::{
+    query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse,
+};
+use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
+use reqwest::{Client, Response, Version};
+use tonic::codegen::Body;
 
 #[get("/evmos")]
 pub async fn evmos_health() -> Result<HttpResponse, HTTPError> {
-    let builder = build_request_by_chain_name(
-        "evmos",
-        HTTPRequestMethod::GET
-    ).await;
+    let builder = build_request_by_chain_name("evmos", HTTPRequestMethod::GET).await;
     let res = builder.send().await.map_err(|_| HTTPError::Timeout)?;
 
     response::build_health_response(Some(res), serde_json::Value::Null).await
@@ -29,11 +30,11 @@ pub async fn polygon_health(client: web::Data<Client>) -> Result<HttpResponse, H
         "params": [],
         "id": 1
     });
-    let res = build_request_with_body_and_chain_name(
-        "polygon",
-        HTTPRequestMethod::POST,
-        body,
-    ).await.send().await.map_err(|_| HTTPError::Timeout)?;
+    let res = build_request_with_body_and_chain_name("polygon", HTTPRequestMethod::POST, body)
+        .await
+        .send()
+        .await
+        .map_err(|_| HTTPError::Timeout)?;
 
     response::build_health_response(Option::from(res), serde_json::Value::Null).await
 }
@@ -54,9 +55,7 @@ pub async fn osmosis_health() -> Result<HttpResponse, HTTPError> {
         .map_err(|e| HTTPError::Timeout)?;
 
     // // Querying for a balance might fail, i.e. if the account doesn't actually exist
-    let balance = response
-        .balance
-        .ok_or_else(|| HTTPError::BadRequest)?;
+    let balance = response.balance.ok_or_else(|| HTTPError::BadRequest)?;
     // balance to Value
     let balance_value = serde_json::to_value(balance).unwrap();
 
@@ -65,9 +64,9 @@ pub async fn osmosis_health() -> Result<HttpResponse, HTTPError> {
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{App, body::to_bytes, dev::Service, Error, http, middleware, test, web};
-    use actix_web::web::Data;
     use crate::http::response::HealthResponse;
+    use actix_web::web::Data;
+    use actix_web::{body::to_bytes, dev::Service, http, middleware, test, web, App, Error};
 
     use super::*;
 

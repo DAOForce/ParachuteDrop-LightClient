@@ -1,9 +1,9 @@
-use actix_web::{middleware, web, App, HttpRequest, HttpServer};
 use actix_web::web::Data;
+use actix_web::{middleware, web, App, HttpRequest, HttpServer};
 
-mod routes;
-mod http;
 mod client;
+mod http;
+mod routes;
 
 use crate::routes::health::{evmos_health, osmosis_health, polygon_health};
 use crate::routes::query::{query_balance, track_messages};
@@ -35,15 +35,15 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/index.html").to(|| async { "Hello world!" }))
             .service(web::resource("/").to(index))
     })
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{body::to_bytes, dev::Service, http, test, web, App, Error};
     use crate::http::response::HealthResponse;
+    use actix_web::{body::to_bytes, dev::Service, http, test, web, App, Error};
 
     use super::*;
 

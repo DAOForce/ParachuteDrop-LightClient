@@ -1,9 +1,9 @@
-use std::fmt::{Display, Formatter};
 use actix_web::{
     error, get,
     http::{header::ContentType, StatusCode},
     App, HttpResponse,
 };
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum HTTPError {

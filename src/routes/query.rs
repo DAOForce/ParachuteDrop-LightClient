@@ -1,23 +1,30 @@
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use actix_web::{get, HttpResponse, Responder, web};
-use actix_web::http::StatusCode;
-use ibc_proto::cosmos::bank::v1beta1::{query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse};
-use ibc_proto::cosmos::tx::v1beta1::{GetTxRequest, GetTxResponse, Tx, TxBody};
-use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
-use reqwest::{Client, Response, Version};
-use tonic::codegen::Body;
-use crate::client::factory::{build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client, get_tx_grpc_client};
+use crate::client::factory::{
+    build_request_by_chain_name, build_request_with_body_and_chain_name, get_bank_grpc_client,
+    get_tx_grpc_client,
+};
 use crate::http::error::HTTPError;
 use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
-use serde::{Deserialize, Serialize};
-use serde_json::{from_str, Value};
-use strum::IntoEnumIterator;
-use crate::routes::message::{DumpMessageType, HodlMessageType, IndetermineMessageType, MessageType};
+use crate::routes::message::{
+    DumpMessageType, HodlMessageType, IndetermineMessageType, MessageType,
+};
 use crate::routes::sonar;
 use crate::routes::sonar::SonarOsmosisResponse;
+use actix_web::http::StatusCode;
+use actix_web::{get, web, HttpResponse, Responder};
+use ibc_proto::cosmos::bank::v1beta1::{
+    query_client::QueryClient, QueryAllBalancesRequest, QueryBalanceRequest, QueryBalanceResponse,
+};
+use ibc_proto::cosmos::tx::v1beta1::{GetTxRequest, GetTxResponse, Tx, TxBody};
+use ibc_proto::ibc::core::channel::v1::acknowledgement::Response::Error;
+use reqwest::{Client, Response, Version};
+use serde::{Deserialize, Serialize};
+use serde_json::{from_str, Value};
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use strum::IntoEnumIterator;
+use tonic::codegen::Body;
 
 #[derive(Deserialize)]
 pub struct QueryChainTokenBalance {
@@ -34,16 +41,26 @@ pub struct ChainTokenBalanceResponse {
 }
 
 #[get("/message")]
-pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<HttpResponse, HTTPError> {
+pub async fn track_messages(
+    info: web::Query<QueryChainTokenBalance>,
+) -> Result<HttpResponse, HTTPError> {
     let target_chain = info.target_chain.clone();
     let token_denom = info.token_denom.clone();
     let address = info.address.clone();
 
     let http_client = reqwest::Client::new();
-    let sonar_api = format!("https://api.sonarpod.com/osmosis/account/{}/transactions?per_page=20&page=1", address);
-    let sonar_request = http_client.get(sonar_api).send().await.map_err(|_| HTTPError::Timeout)?;
+    let sonar_api = format!(
+        "https://api.sonarpod.com/osmosis/account/{}/transactions?per_page=20&page=1",
+        address
+    );
+    let sonar_request = http_client
+        .get(sonar_api)
+        .send()
+        .await
+        .map_err(|_| HTTPError::Timeout)?;
     let sonar_response_body = sonar_request.text().await.map_err(|_| HTTPError::Timeout)?;
-    let sonar_response: SonarOsmosisResponse = from_str(&sonar_response_body).map_err(|_| HTTPError::InternalError)?;
+    let sonar_response: SonarOsmosisResponse =
+        from_str(&sonar_response_body).map_err(|_| HTTPError::InternalError)?;
 
     // iterate each Tx struct in the sonar_response.
     // then filter & create new map which contains the type of the message contains the enum message type of `DumpMessageType` and `HodlMessageType`
@@ -58,7 +75,10 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
         // let txHash = tx.TxHash.to_string();
         for im in IndetermineMessageType::iter() {
             if doesContainMessageType(&tx, &im) {
-                indetermine_messages.entry(im.to_string()).or_insert(vec![]).push(tx);
+                indetermine_messages
+                    .entry(im.to_string())
+                    .or_insert(vec![])
+                    .push(tx);
                 let raw_tx_response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
                 if raw_tx_response.tx_response.is_none() {
                     break;
@@ -76,7 +96,9 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
                 // token in denom: 52F0A20F1C1801A248333B13DFC7C54CF4E0BF8E6E6180D6204E6A9495B64057
                 // token out denom: 163ED10C9238616CFEDF905EDCB848203405876CDB221045A4BC0FD4BE9907F4
                 let msg_str = String::from_utf8_lossy(&msg);
-                if msg_str.contains("ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A") {
+                if msg_str.contains(
+                    "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A",
+                ) {
                     println!("dump message: {}", msg_str);
                 }
                 println!("msg_str: {}", msg_str);
@@ -85,13 +107,19 @@ pub async fn track_messages(info: web::Query<QueryChainTokenBalance>) -> Result<
 
         for hm in HodlMessageType::iter() {
             if doesContainMessageType(tx, &hm) {
-                hodl_messages.entry(hm.to_string()).or_insert(vec![]).push(tx);
+                hodl_messages
+                    .entry(hm.to_string())
+                    .or_insert(vec![])
+                    .push(tx);
             }
         }
 
         for dm in DumpMessageType::iter() {
             if doesContainMessageType(tx, &dm) {
-                dump_messages.entry(dm.to_string()).or_insert(vec![]).push(tx);
+                dump_messages
+                    .entry(dm.to_string())
+                    .or_insert(vec![])
+                    .push(tx);
             }
         }
     }
@@ -107,15 +135,15 @@ fn isMsgSwapExactAmountIn(tx_body: &TxBody) -> bool {
         false
     } else {
         true
-    }
+    };
 }
 
 fn isSucceedTransaction(raw_tx_response: &GetTxResponse) -> bool {
     let tx_response = raw_tx_response.clone().tx_response.unwrap();
     if tx_response.code != 0 {
-        return false
+        return false;
     }
-    return true
+    return true;
 }
 
 // getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
@@ -132,15 +160,15 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> GetTxResponse {
         Ok(response) => {
             let tx_response = response.into_inner();
             tx_response
-        },
+        }
         Err(e) => {
             println!("Error getting transaction: {}", e);
             GetTxResponse {
                 tx_response: None,
-                tx: None
+                tx: None,
             }
         }
-    }
+    };
 }
 
 fn doesContainMessageType(tx: &sonar::Tx, msg: &dyn MessageType) -> bool {
@@ -149,7 +177,9 @@ fn doesContainMessageType(tx: &sonar::Tx, msg: &dyn MessageType) -> bool {
 
 // check the balance of evmos in given account address
 #[get("/balance")]
-pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<HttpResponse, HTTPError> {
+pub async fn query_balance(
+    info: web::Query<QueryChainTokenBalance>,
+) -> Result<HttpResponse, HTTPError> {
     // TODO: search appropriate lcd or grpc request by searching chain name
     let mut client = get_bank_grpc_client(&info.target_chain).await;
     let target_chain = info.target_chain.clone();
@@ -157,7 +187,9 @@ pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<H
     let address = info.address.clone();
 
     let denom = match token_denom.as_str() {
-        "evmos" => "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string(),
+        "evmos" => {
+            "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string()
+        }
         _ => return Err(HTTPError::BadRequest),
     };
 
@@ -177,9 +209,7 @@ pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<H
         .map_err(|e| HTTPError::Timeout)?;
 
     // convert response to ChainTokenBalanceResponse
-    let balance = response
-        .balance
-        .ok_or_else(|| HTTPError::BadRequest)?;
+    let balance = response.balance.ok_or_else(|| HTTPError::BadRequest)?;
     let amount = balance.amount.parse::<f64>().unwrap() / f64::powf(10.0, 18.0);
 
     let chain_token_balance_response = ChainTokenBalanceResponse {
@@ -194,22 +224,22 @@ pub async fn query_balance(info: web::Query<QueryChainTokenBalance>) -> Result<H
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{App, body::to_bytes, dev::Service, Error, http, middleware, test, web};
-    use actix_web::web::Data;
     use crate::http::response::HealthResponse;
+    use actix_web::web::Data;
+    use actix_web::{body::to_bytes, dev::Service, http, middleware, test, web, App, Error};
 
     use super::*;
 
     #[actix_web::test]
     async fn test_query_balance() -> Result<(), Error> {
         // given: http://localhost:8080/query/balance?target_chain=osmosis&token_denom=evmos&address=osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n
-        let query_controller = web::scope("/query")
-            .service(query_balance);
+        let query_controller = web::scope("/query").service(query_balance);
         let mut app = test::init_service(
             App::new()
                 .service(query_controller)
                 .wrap(middleware::Logger::default()),
-        ).await;
+        )
+        .await;
 
         // when: make sure that the endpoint calls query_balance
         let req = test::TestRequest::get()
@@ -229,7 +259,10 @@ mod tests {
         let body_str = std::str::from_utf8(&body).unwrap();
         println!("{}", body_str);
 
-        assert_eq!(body_str, r#"{"address":"osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n","token_name":"evmos","amount":6.856597348646046}"#);
+        assert_eq!(
+            body_str,
+            r#"{"address":"osmo1083svrca4t350mphfv9x45wq9asrs60cq5yv9n","token_name":"evmos","amount":6.856597348646046}"#
+        );
         Ok(())
     }
 }

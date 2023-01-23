@@ -14,8 +14,11 @@
 
 ## How to start?
 ```
+cargo fmt
+cargo clippy --all --all-targets --all-features
+cargo test --all --all-targets --all-features
 cargo build
-cargo start
+cargo run
 ```
 
 ## References
