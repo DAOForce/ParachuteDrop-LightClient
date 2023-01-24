@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::io::Bytes;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString, IntoStaticStr};
 
@@ -78,7 +79,7 @@ impl Display for IndetermineMessageType {
 impl MessageType for IndetermineMessageType {
     fn get_type(&self) -> String {
         match *self {
-            IndetermineMessageType::SwapExactAmountIn => "swap_exact_amount_in".to_string(),
+            IndetermineMessageType::SwapExactAmountIn => "SwapExactAmountIn".to_string(),
         }
     }
 }

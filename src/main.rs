@@ -5,6 +5,9 @@ mod client;
 mod http;
 mod routes;
 
+#[macro_use]
+extern crate json;
+
 use crate::routes::health::{evmos_health, osmosis_health, polygon_health};
 use crate::routes::query::{query_balance, track_messages};
 

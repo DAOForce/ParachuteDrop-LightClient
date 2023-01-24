@@ -17,6 +17,7 @@ tonic = "0.8.3"
 prost = "0.11.5"
 #pbjson = "0.5.1"
 #pbjson-types = "0.5.1"
+json = "*"
 
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "full"] }
 protobuf = "3.2.0" # This will be needed to use the generated code as protobuf messages
@@ -26,6 +27,7 @@ web3 = "0.18.0"
 jsonrpc-core-client = "18.0.0"
 strum = "0.24.1"
 strum_macros = "0.24.3"
+base64 = "0.21.0"
 
 [build-dependencies]
 tonic-build = "0.8.4"
