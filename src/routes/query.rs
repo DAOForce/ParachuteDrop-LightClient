@@ -148,19 +148,85 @@ pub async fn track_messages(
 
         for hm in HodlMessageType::iter() {
             if doesContainMessageType(tx, &hm) {
-                hodl_messages
-                    .entry(hm.to_string())
-                    .or_insert(vec![])
-                    .push(tx.clone());
+                let response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
+                let unwrapped_response = response.clone();
+                let unwrapped_response = match unwrapped_response {
+                    Ok(response) => response,
+                    Err(_) => continue,
+                };
+                if unwrapped_response.tx_response.is_none() {
+                    continue;
+                }
+
+                let tx_response = response.clone().unwrap().tx_response.unwrap();
+                if !isSucceedTransaction(&tx_response) {
+                    continue;
+                }
+
+                let supported_blockchains = get_supported_blockchains();
+                let cosmos_blockchains = supported_blockchains.get(&token_denom).unwrap();
+                let cosmos_token_denom = cosmos_blockchains.clone().cosmos_token_denom;
+                let cosmos_blockchain_denom = cosmos_token_denom.clone().unwrap_or_default();
+
+                let events = tx_response.clone().events;
+                for event in events {
+                    if event.r#type == EventType::PoolJoined.to_string() {
+                        for attribute in &event.attributes {
+                            if attribute.key == "pool_id" && attribute.value == "722" {
+                                for attribute in &event.attributes {
+                                    if attribute.value.contains(&cosmos_blockchain_denom) {
+                                        hodl_messages
+                                            .entry(hm.to_string())
+                                            .or_insert(vec![])
+                                            .push(tx.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
         for dm in DumpMessageType::iter() {
             if doesContainMessageType(tx, &dm) {
-                dump_messages
-                    .entry(dm.to_string())
-                    .or_insert(vec![])
-                    .push(tx.clone());
+                let response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
+                let unwrapped_response = response.clone();
+                let unwrapped_response = match unwrapped_response {
+                    Ok(response) => response,
+                    Err(_) => continue,
+                };
+                if unwrapped_response.tx_response.is_none() {
+                    continue;
+                }
+
+                let tx_response = response.clone().unwrap().tx_response.unwrap();
+                if !isSucceedTransaction(&tx_response) {
+                    continue;
+                }
+
+                let supported_blockchains = get_supported_blockchains();
+                let cosmos_blockchains = supported_blockchains.get(&token_denom).unwrap();
+                let cosmos_token_denom = cosmos_blockchains.clone().cosmos_token_denom;
+                let cosmos_blockchain_denom = cosmos_token_denom.clone().unwrap_or_default();
+
+                let events = tx_response.clone().events;
+                for event in events {
+                    if event.r#type == EventType::PoolExited.to_string() {
+                        for attribute in &event.attributes {
+                            if attribute.key == "pool_id" && attribute.value == "722" {
+                                for attribute in &event.attributes {
+                                    if attribute.value.contains(&cosmos_blockchain_denom) {
+                                        dump_messages
+                                            .entry(dm.to_string())
+                                            .or_insert(vec![])
+                                            .push(tx.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -225,11 +291,12 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> Result<CustomGetTx
         Err(e) => return Err(e.to_string()),
     };
 
-    let deserialized: IntermediateGetTxResponse = serde_json::from_str(&*json_str).map_err(|e| {
-        println!("json_str: {}", json_str);
-        println!("deserialized error: {}", e.to_string());
-        e.to_string()
-    })?;
+    let deserialized: IntermediateGetTxResponse =
+        serde_json::from_str(&*json_str).map_err(|e| {
+            println!("json_str: {}", json_str);
+            println!("deserialized error: {}", e.to_string());
+            e.to_string()
+        })?;
 
     let tx_response = match deserialized.tx_response {
         Some(s) => {

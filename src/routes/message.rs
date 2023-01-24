@@ -93,12 +93,16 @@ struct HodlMessage {
 #[derive(Debug, EnumIter)]
 pub enum EventType {
     TokenSwapped,
+    PoolExited,
+    PoolJoined,
 }
 
 impl Display for EventType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
             EventType::TokenSwapped => "token_swapped",
+            EventType::PoolExited => "pool_exited",
+            EventType::PoolJoined => "pool_joined",
         };
         write!(f, "{}", s)
     }
