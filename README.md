@@ -2,15 +2,9 @@
 ## What's this?
 * This module is the helper for Parachute Drop. It tracks the activity of users in Osmosis dedicated to Evmos token, especially looking at the dumping/hodling tokens by looking at the following messages.
 * Messages that we look into in the light client
-  * BeginUnlocking
-  * BeginUnlockingAll
   * ExitPool
-  * SuperfluidUnboundLock
-  * SuperfluidUndelegate
   * JoinPool
-  * LockTokens
-  * LockAndSuperfluidDelegate
-  * SuperfluidDelegate
+  * SwapExactAmountIn
 
 ## How to start?
 ```

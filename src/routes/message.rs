@@ -25,33 +25,20 @@ pub trait MessageType: fmt::Display {
 impl MessageType for DumpMessageType {
     fn get_type(&self) -> String {
         match *self {
-            DumpMessageType::BeginUnlocking => "begin_unlocking".to_string(),
-            DumpMessageType::BeginUnlockingAll => "begin_unlocking_all".to_string(),
             DumpMessageType::ExitPool => "exit_pool".to_string(),
-            DumpMessageType::SuperfluidUnboundLock => "superfluid_unbound_lock".to_string(),
-            DumpMessageType::SuperfluidUndelegate => "superfluid_undelegate".to_string(),
         }
     }
 }
 
 #[derive(Debug, EnumIter)]
 pub enum DumpMessageType {
-    BeginUnlocking,
-    BeginUnlockingAll,
     ExitPool,
-    SuperfluidUnboundLock,
-    SuperfluidUndelegate,
 }
 
 impl MessageType for HodlMessageType {
     fn get_type(&self) -> String {
         match *self {
             HodlMessageType::JoinPool => "join_pool".to_string(),
-            HodlMessageType::LockTokens => "lock_tokens".to_string(),
-            HodlMessageType::LockAndSuperfluidDelegate => {
-                "lock_and_superfluid_delegate".to_string()
-            }
-            HodlMessageType::SuperfluidDelegate => "superfluid_delegate".to_string(),
         }
     }
 }
@@ -59,9 +46,6 @@ impl MessageType for HodlMessageType {
 #[derive(Debug, EnumIter)]
 pub enum HodlMessageType {
     JoinPool,
-    LockTokens,
-    LockAndSuperfluidDelegate,
-    SuperfluidDelegate,
 }
 
 #[derive(Debug, EnumIter)]
@@ -104,4 +88,18 @@ struct DumpMessage {
 struct HodlMessage {
     message_type: HodlMessageType,
     transaction_hash: String,
+}
+
+#[derive(Debug, EnumIter)]
+pub enum EventType {
+    TokenSwapped,
+}
+
+impl Display for EventType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            EventType::TokenSwapped => "token_swapped",
+        };
+        write!(f, "{}", s)
+    }
 }

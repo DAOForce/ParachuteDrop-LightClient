@@ -25,6 +25,7 @@ pub struct SupportedBlockchain {
     pub rest_url: Option<String>,
     pub grpc_url: Option<String>,
     pub explorer_api_url: Option<String>,
+    pub cosmos_token_denom: Option<String>,
 }
 
 impl SupportedBlockchain {
@@ -94,6 +95,9 @@ pub fn get_supported_blockchains() -> HashMap<String, SupportedBlockchain> {
             rest_url: Some("https://rest.bd.evmos.org:1317".to_string()),
             grpc_url: None,
             explorer_api_url: None,
+            cosmos_token_denom: Some(
+                "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A".to_string(),
+            ),
         },
     );
     supported_blockchains.insert(
@@ -104,6 +108,7 @@ pub fn get_supported_blockchains() -> HashMap<String, SupportedBlockchain> {
             rest_url: Some("https://polygon-mainnet-rpc.allthatnode.com:8545/".to_string()),
             grpc_url: None,
             explorer_api_url: None,
+            cosmos_token_denom: None,
         },
     );
     supported_blockchains.insert(
@@ -114,6 +119,7 @@ pub fn get_supported_blockchains() -> HashMap<String, SupportedBlockchain> {
             rest_url: Some("https://osmosis-mainnet-archive.allthatnode.com:26657".to_string()),
             grpc_url: Some("https://grpc.osmosis.zone:9090/".to_string()),
             explorer_api_url: Some("https://api.sonarpod.com/osmosis".to_string()),
+            cosmos_token_denom: Some("uosmo".to_string()),
         },
     );
     supported_blockchains
@@ -169,7 +175,7 @@ impl SearchType {
         };
         // https://api.sonarpod.com/osmosis/transaction/F54E1C65DF27C20EE0D124DB897B59D4A70D2A93955303D5FA12642609258DE6/raw
         SearchType::SonarTransactionRaw {
-            address: "https://api.sonarpod.com/osmosis/transaction/F54E1C65DF27C20EE0D124DB897B59D4A70D2A93955303D5FA12642609258DE6/raw".parse().unwrap()
+            address: "https://api.sonarpod.com/osmosis/transaction/163ED10C9238616CFEDF905EDCB848203405876CDB221045A4BC0FD4BE9907F4/raw".parse().unwrap()
         }
     }
     pub fn get_address(&self) -> String {

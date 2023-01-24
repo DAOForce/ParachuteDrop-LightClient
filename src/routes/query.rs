@@ -7,8 +7,9 @@ use crate::http::error::HTTPError;
 use crate::http::method::HTTPRequestMethod;
 use crate::http::response;
 use crate::http::response::HealthResponse;
+use crate::routes;
 use crate::routes::message::{
-    DumpMessageType, HodlMessageType, IndetermineMessageType, MessageType,
+    DumpMessageType, EventType, HodlMessageType, IndetermineMessageType, MessageType,
 };
 use crate::routes::sonar;
 use crate::routes::sonar::{CustomTxResponse, SonarOsmosisResponse};
@@ -33,6 +34,9 @@ use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use tonic::codegen::Body;
 
+// HashMap<String, Vec<&parachutedrop_rust_server::routes::sonar::Tx>
+pub type processed_message_type = HashMap<String, Vec<sonar::Tx>>;
+
 #[derive(Deserialize)]
 pub struct QueryChainTokenBalance {
     target_chain: String,
@@ -45,6 +49,13 @@ pub struct ChainTokenBalanceResponse {
     address: String,
     token_name: String,
     amount: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct HodlDumpMessageResponse {
+    queried_lastest_tx_amount: u32,
+    hodl_message: processed_message_type,
+    dump_message: processed_message_type,
 }
 
 #[get("/message")]
@@ -72,8 +83,8 @@ pub async fn track_messages(
     // iterate each Tx struct in the sonar_response.
     // then filter & create new map which contains the type of the message
     // contains the enum message type of `DumpMessageType` and `HodlMessageType`
-    let mut dump_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
-    let mut hodl_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
+    let mut dump_messages: HashMap<String, Vec<sonar::Tx>> = HashMap::new();
+    let mut hodl_messages: HashMap<String, Vec<sonar::Tx>> = HashMap::new();
     let mut indetermine_messages: HashMap<String, Vec<&sonar::Tx>> = HashMap::new();
     // sonar_response Txs :: order by time desc
     for tx in &sonar_response.Txs {
@@ -87,31 +98,47 @@ pub async fn track_messages(
                     .entry(im.to_string())
                     .or_insert(vec![])
                     .push(tx);
+
                 let response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
                 let unwrapped_response = response.clone().unwrap();
                 if unwrapped_response.tx_response.is_none() {
                     continue;
                 }
+
                 let tx_response = response.clone().unwrap().tx_response.unwrap();
                 if !isSucceedTransaction(&tx_response) {
                     continue;
                 }
-                // let tx = response.unwrap().tx.unwrap();
-                // let tx_body = tx.body.unwrap();
-                // if !isMsgSwapExactAmountIn(&tx_body) {
-                //     continue;
-                // }
-                // let msg = &tx_body.messages[0].value;
-                // msg to utf8 with lossy
-                // token in denom: 52F0A20F1C1801A248333B13DFC7C54CF4E0BF8E6E6180D6204E6A9495B64057
-                // token out denom: 163ED10C9238616CFEDF905EDCB848203405876CDB221045A4BC0FD4BE9907F4
-                // let msg_str = String::from_utf8_lossy(&msg);
-                // if msg_str.contains(
-                //     "ibc/6AE98883D4D5D5FF9E50D7130F1305DA2FFA0C652D1DD9C123657C6B4EB2DF8A",
-                // ) {
-                //     println!("dump message: {}", msg_str);
-                // }
-                // println!("msg_str: {}", msg_str);
+
+                let supported_blockchains = get_supported_blockchains();
+                let cosmos_blockchains = supported_blockchains.get(&token_denom).unwrap();
+                let cosmos_token_denom = cosmos_blockchains.clone().cosmos_token_denom;
+                let cosmos_blockchain_denom = cosmos_token_denom.clone().unwrap_or_default();
+
+                let events = tx_response.clone().events;
+                for event in events {
+                    if event.r#type == EventType::TokenSwapped.to_string() {
+                        for attribute in &event.attributes {
+                            if attribute.key == "pool_id" && attribute.value == "722" {
+                                for attribute in &event.attributes {
+                                    if attribute.value.contains(&cosmos_blockchain_denom) {
+                                        if attribute.key == "tokens_in" {
+                                            dump_messages
+                                                .entry(im.to_string())
+                                                .or_insert(vec![])
+                                                .push(tx.clone());
+                                        } else if attribute.key == "tokens_out" {
+                                            hodl_messages
+                                                .entry(im.to_string())
+                                                .or_insert(vec![])
+                                                .push(tx.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -120,7 +147,7 @@ pub async fn track_messages(
                 hodl_messages
                     .entry(hm.to_string())
                     .or_insert(vec![])
-                    .push(tx);
+                    .push(tx.clone());
             }
         }
 
@@ -129,12 +156,21 @@ pub async fn track_messages(
                 dump_messages
                     .entry(dm.to_string())
                     .or_insert(vec![])
-                    .push(tx);
+                    .push(tx.clone());
             }
         }
     }
 
-    Ok(HttpResponse::Ok().json(sonar_response))
+    println!("dump_messages: {:?}", dump_messages);
+    println!("hodl_messages: {:?}", hodl_messages);
+
+    let response = HodlDumpMessageResponse {
+        queried_lastest_tx_amount: sonar_response.Txs.len() as u32,
+        hodl_message: hodl_messages.clone(),
+        dump_message: dump_messages.clone(),
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 fn isMsgSwapExactAmountIn(tx_body: &TxBody) -> bool {
@@ -170,9 +206,6 @@ struct ExplorerResponse {
 
 #[derive(Clone, PartialEq)]
 pub struct CustomGetTxResponse {
-    /// tx is the queried transaction.
-    // pub tx: Option<CustomTxResponse>,
-    /// tx_response is the queried TxResponses.
     pub tx_response: Option<CustomTxResponse>,
 }
 
@@ -220,20 +253,10 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> Result<CustomGetTx
             Err("tx_response is none".to_string())
         }
     };
-    let tx = match deserialized.tx {
-        Some(s) => Tx::decode(s.as_str().unwrap().as_bytes()).map_err(|e| e.to_string()),
-        None => Ok(Tx::default()),
-    };
 
     // tx_response from Result<TxResponse, String> to Option<TxResponse>
     let tx_response: Option<CustomTxResponse> = match tx_response {
         Ok(tx_response) => Some(tx_response),
-        Err(e) => return Err(e.to_string()),
-    };
-
-    // tx from Result<Tx, String> to Option<Tx>
-    let tx: Option<Tx> = match tx {
-        Ok(tx) => Some(tx),
         Err(e) => return Err(e.to_string()),
     };
 

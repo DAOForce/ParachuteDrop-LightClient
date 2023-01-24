@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Tx {
     pub(crate) TxHash: String,
     Success: bool,
@@ -15,13 +15,13 @@ pub struct Tx {
     pub(crate) Messages: Vec<Message>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Fee {
     amount: String,
     denom: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Message {
     Module: String,
     pub(crate) Type: String,
@@ -30,14 +30,14 @@ pub struct Message {
     Success: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SonarOsmosisResponse {
     Page: u64,
     PerPage: u64,
     pub(crate) Txs: Vec<Tx>,
 }
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CustomTxResponse {
     /// The block height
     pub height: String,
@@ -77,13 +77,13 @@ pub struct CustomTxResponse {
     pub events: Vec<CustomEvent>,
 }
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CustomEvent {
     pub r#type: String,
     pub attributes: Vec<CustomEventAttribute>,
 }
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct CustomEventAttribute {
     pub key: String,
     pub value: String,
