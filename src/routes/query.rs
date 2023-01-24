@@ -100,7 +100,11 @@ pub async fn track_messages(
                     .push(tx);
 
                 let response = getTxRawByHash(&tx.TxHash.to_string(), &target_chain).await;
-                let unwrapped_response = response.clone().unwrap();
+                let unwrapped_response = response.clone();
+                let unwrapped_response = match unwrapped_response {
+                    Ok(response) => response,
+                    Err(_) => continue,
+                };
                 if unwrapped_response.tx_response.is_none() {
                     continue;
                 }
@@ -192,14 +196,8 @@ fn isSucceedTransaction(raw_tx_response: &CustomTxResponse) -> bool {
     return true;
 }
 
-// #[derive(Deserialize, Debug)]
-// struct ExplorerResponse {
-//     tx_response: Option<TxResponse>,
-//     tx: Option<Tx>,
-// }
-
 #[derive(Deserialize, Debug)]
-struct ExplorerResponse {
+struct IntermediateGetTxResponse {
     tx_response: Option<Value>,
     tx: Option<Value>,
 }
@@ -218,6 +216,7 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> Result<CustomGetTx
     let response = build_request_to_explorer_api_by_chain_name_with_query_parameters(
         HTTPRequestMethod::GET,
         &search_type,
+        &tx_hash,
     )
     .await;
 
@@ -226,7 +225,7 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> Result<CustomGetTx
         Err(e) => return Err(e.to_string()),
     };
 
-    let deserialized: ExplorerResponse = serde_json::from_str(&*json_str).map_err(|e| {
+    let deserialized: IntermediateGetTxResponse = serde_json::from_str(&*json_str).map_err(|e| {
         println!("json_str: {}", json_str);
         println!("deserialized error: {}", e.to_string());
         e.to_string()
@@ -235,7 +234,15 @@ async fn getTxRawByHash(tx_hash: &str, target_chain: &str) -> Result<CustomGetTx
     let tx_response = match deserialized.tx_response {
         Some(s) => {
             let json_str = serde_json::to_string(&s).unwrap();
-            let mut custom_tx_response: CustomTxResponse = serde_json::from_str(&json_str).unwrap();
+            let mut custom_tx_response = serde_json::from_str(&json_str);
+            let mut custom_tx_response: CustomTxResponse = match custom_tx_response {
+                Ok(custom_tx_response) => custom_tx_response,
+                Err(e) => {
+                    println!("json_str: {}", json_str);
+                    println!("deserialized error: {}", e.to_string());
+                    return Err(e.to_string());
+                }
+            };
             for event in &mut custom_tx_response.events {
                 for attribute in &mut event.attributes {
                     let decoded_key = decode(&attribute.key).unwrap();

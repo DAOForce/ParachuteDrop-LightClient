@@ -175,12 +175,16 @@ impl SearchType {
         };
         // https://api.sonarpod.com/osmosis/transaction/F54E1C65DF27C20EE0D124DB897B59D4A70D2A93955303D5FA12642609258DE6/raw
         SearchType::SonarTransactionRaw {
-            address: "https://api.sonarpod.com/osmosis/transaction/163ED10C9238616CFEDF905EDCB848203405876CDB221045A4BC0FD4BE9907F4/raw".parse().unwrap()
+            address: address.replace("{{transaction_hash}}", transaction_hash),
         }
     }
-    pub fn get_address(&self) -> String {
+    pub fn get_address(&self, transaction_hash: &str) -> String {
         match self {
-            SearchType::SonarTransactionRaw { address } => address.to_string(),
+            SearchType::SonarTransactionRaw { address } => {
+                let new_address = address.replace("{transaction_hash}", transaction_hash);
+                println!("address: {}", new_address);
+                new_address
+            }
         }
     }
 }
@@ -188,10 +192,11 @@ impl SearchType {
 pub async fn build_request_to_explorer_api_by_chain_name_with_query_parameters(
     method: HTTPRequestMethod,
     search_type: &SearchType,
+    transaction_hash: &str,
 ) -> Result<Response, String> {
     let client = web::Data::new(Client::new());
     let request_builder = match method {
-        HTTPRequestMethod::GET => client.get(search_type.get_address()),
+        HTTPRequestMethod::GET => client.get(search_type.get_address(transaction_hash)),
         _ => panic!("Error: only GET method is supported for explorer api!"),
     };
     let response = match request_builder.send().await {
