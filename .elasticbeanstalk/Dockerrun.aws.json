@@ -1,0 +1,11 @@
+{
+  "AWSEBDockerrunVersion": "1",
+  "Image": {
+    "Name": "712218945685.dkr.ecr.ap-northeast-2.amazonaws.com/parachutedrop-lightclient:latest"
+  },
+  "Ports": [
+    {
+      "ContainerPort": 8080
+    }
+  ]
+}
